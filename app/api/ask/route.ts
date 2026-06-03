@@ -274,27 +274,29 @@ function extractAnswer(responseBody: unknown): string {
 
 function extractSources(responseBody: unknown): Source[] {
   const sourceArrays = getCandidateSourceArrays(responseBody);
-  const sources: Source[] = [];
-  const seenUrls = new Set<string>();
+  const sourceMap = new Map<string, Source>();
 
   for (const sourceArray of sourceArrays) {
     for (const source of sourceArray) {
       const normalizedSource = normalizeSource(source);
 
-      if (!normalizedSource || seenUrls.has(normalizedSource.url)) {
+      if (!normalizedSource) {
         continue;
       }
 
-      seenUrls.add(normalizedSource.url);
-      sources.push(normalizedSource);
+      const sourceKey = getSourceDedupeKey(normalizedSource);
+      const existingSource = sourceMap.get(sourceKey);
 
-      if (sources.length >= 8) {
-        return sources;
+      if (
+        !existingSource ||
+        shouldPreferSource(normalizedSource, existingSource)
+      ) {
+        sourceMap.set(sourceKey, normalizedSource);
       }
     }
   }
 
-  return sources;
+  return Array.from(sourceMap.values()).slice(0, 8);
 }
 
 function extractFollowups(responseBody: unknown): string[] {
@@ -408,6 +410,56 @@ function normalizeSource(source: unknown): Source | null {
     title: truncate(title, 120),
     url
   };
+}
+
+function getSourceDedupeKey(source: Source): string {
+  try {
+    const url = new URL(source.url);
+    const versionlessPath = url.pathname
+      .toLowerCase()
+      .replace(/\/(?:latest|\d{4}\.\d+)(?=\/)/g, "/{version}");
+
+    return `${normalizeSourceTitle(source.title)}|${url.hostname.toLowerCase()}${versionlessPath}`;
+  } catch {
+    return normalizeSourceTitle(source.title) || source.url;
+  }
+}
+
+function normalizeSourceTitle(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/[^\w\s-]/g, "");
+}
+
+function shouldPreferSource(candidate: Source, existing: Source): boolean {
+  const candidateScore = getSourcePreferenceScore(candidate);
+  const existingScore = getSourcePreferenceScore(existing);
+
+  if (candidateScore !== existingScore) {
+    return candidateScore > existingScore;
+  }
+
+  return candidate.url.length < existing.url.length;
+}
+
+function getSourcePreferenceScore(source: Source): number {
+  try {
+    const url = new URL(source.url);
+
+    if (url.pathname.includes("/latest/")) {
+      return 3;
+    }
+
+    if (url.pathname.includes("/automation-cloud/")) {
+      return 2;
+    }
+
+    return 1;
+  } catch {
+    return 0;
+  }
 }
 
 function normalizeUrl(value: string): string {
