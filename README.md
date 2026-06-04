@@ -29,7 +29,7 @@ A minimal Next.js App Router application that asks UiPath Docs AI directly from 
 ```env
 UIPATH_CLIENT_ID=
 UIPATH_CLIENT_SECRET=
-UIPATH_ORIGIN_URL=https://cloud.uipath.com
+UIPATH_ORIGIN_URL=
 DOCS_AI_ENDPOINT=
 ```
 
